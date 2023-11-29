@@ -592,8 +592,8 @@ func (p *LocalPathProvisioner) createHelperPod(action ActionType, cmd []string, 
 
 	defer func() {
 		// log helper pod logs to the controller
-		if err := saveHelperPodLogs(pod); err != nil {
-			logrus.Error(err.Error())
+		if saveLogsErr := saveHelperPodLogs(pod, helperPod.Name); saveLogsErr != nil {
+			logrus.Error(saveLogsErr.Error())
 		}
 		e := p.kubeClient.CoreV1().Pods(p.namespace).Delete(context.TODO(), helperPod.Name, metav1.DeleteOptions{})
 		if e != nil {
@@ -741,9 +741,9 @@ func createPersistentVolumeSource(volumeType string, path string) (pvs v1.Persis
 // saveHelperPodLogs takes what is in stdout/stderr from the helper
 // pod and logs it to the provisioner's logs. Returns an error if we
 // can't retrieve the helper pod logs.
-func saveHelperPodLogs(pod *v1.Pod) (err error) {
+func saveHelperPodLogs(pod *v1.Pod, podName string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "failed to save %s logs", pod.Name)
+		err = errors.Wrapf(err, "failed to save %s logs", podName)
 	}()
 
 	// save helper pod logs
@@ -759,7 +759,7 @@ func saveHelperPodLogs(pod *v1.Pod) (err error) {
 	if err != nil {
 		return fmt.Errorf("unable to get access to k8s: %s", err.Error())
 	}
-	req := clientset.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &podLogOpts)
+	req := clientset.CoreV1().Pods(pod.Namespace).GetLogs(podName, &podLogOpts)
 	podLogs, err := req.Stream(context.TODO())
 	if err != nil {
 		return fmt.Errorf("error in opening stream: %s", err.Error())
@@ -773,7 +773,7 @@ func saveHelperPodLogs(pod *v1.Pod) (err error) {
 	podLogs.Close()
 
 	// log all messages from the helper pod to the controller
-	logrus.Infof("Start of %s logs", pod.Name)
+	logrus.Infof("Start of %s logs", podName)
 	bufferStr := buf.String()
 	if len(bufferStr) > 0 {
 		helperPodLogs := strings.Split(strings.Trim(bufferStr, "\n"), "\n")
@@ -781,6 +781,6 @@ func saveHelperPodLogs(pod *v1.Pod) (err error) {
 			logrus.Info(log)
 		}
 	}
-	logrus.Infof("End of %s logs", pod.Name)
+	logrus.Infof("End of %s logs", podName)
 	return nil
 }
